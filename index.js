@@ -117,14 +117,25 @@ app.post('/api/rides', async (req, res) => {
     }
 
     // Send command to ESP32-CAM
-    const response = await fetch(`https://${vehicle.id}.local/move`, {
+    let espUrl;
+    if (vehicle.id.includes('.local')) {
+      espUrl = `http://${vehicle.id}/move`;
+    } else if (vehicle.id.includes(':')) {
+      espUrl = `http://${vehicle.id}/move`;
+    } else {
+      espUrl = `http://${vehicle.id}.local/move`;
+    }
+    
+    console.log('Sending command to ESP32:', espUrl);
+    const response = await fetch(espUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         lat: pickupLocation.lat, 
         lng: pickupLocation.lng,
         command: 'move_to_pickup'
-      })
+      }),
+      timeout: 5000
     });
     
     if (!response.ok) {
@@ -215,32 +226,68 @@ app.get('/api/rfid', async (req, res) => {
   }
 });
 
-// --- Connect to MongoDB and Start Server ---
+// --- MongoDB Connection ---
 mongoose.set('strictQuery', false);
 
-const startServer = async () => {
-  try {
-    console.log('Attempting to connect to MongoDB...');
-    console.log('MongoDB URI:', MONGO_URI.replace(/\/\/[^:]+:[^@]+@/, '//<credentials>@')); // Hide credentials in logs
-    
-    await mongoose.connect(MONGO_URI);
-    console.log('Successfully connected to MongoDB');
-    
-    app.listen(PORT, () => {
-      console.log(`Robo Ride backend running on port ${PORT}`);
-      console.log('Available endpoints:');
-      console.log('- POST /api/sensor');
-      console.log('- POST /api/rides');
-      console.log('- GET /api/rides');
-      console.log('- GET /api/vehicle/:id');
-      console.log('- POST /api/vehicle/:id/emergency-stop');
-      console.log('- GET /api/rfid');
-    });
-  } catch (err) {
-    console.error('MongoDB connection error:', err.message);
-    console.error('Full error:', err);
-    process.exit(1);
-  }
-};
+let isConnected = false;
 
-startServer();
+const connectToDatabase = async () => {
+  if (isConnected) {
+    console.log('Using existing database connection');
+    return;
+  }
+
+  try {
+    console.log('Creating new database connection');
+    await mongoose.connect(MONGO_URI);
+    isConnected = true;
+    console.log('Database connection established');
+  } catch (error) {
+    console.error('Database connection error:', error);
+    throw error;
+  }
+}
+
+// Basic health check endpoint
+app.get('/', async (req, res) => {
+  try {
+    await connectToDatabase();
+    res.json({ 
+      status: 'OK',
+      message: 'Robo Ride Backend is running',
+      mongodb: isConnected ? 'Connected' : 'Not connected'
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ 
+      status: 'Error',
+      message: 'Server error occurred',
+      error: error.message
+    });
+  }
+});
+
+// Connect to MongoDB before handling API requests
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ 
+      status: 'Error',
+      message: 'Database connection failed',
+      error: error.message
+    });
+  }
+});
+
+// Start server if not in Vercel environment
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 4000;
+  app.listen(PORT, () => {
+    console.log(`Robo Ride backend running on port ${PORT}`);
+  });
+}
+
+export default app;
