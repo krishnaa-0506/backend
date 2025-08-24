@@ -1,0 +1,19 @@
+{
+  "name": "robo-ride-backend",
+  "version": "1.0.0",
+  "description": "Backend for Robo Ride - receives sensor data from ESP32 and provides REST APIs for frontend integration.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.18.2",
+    "mongoose": "^8.3.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

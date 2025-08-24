@@ -1,0 +1,2 @@
+# Add dotenv for environment variables
+npm install dotenv --save
