@@ -70,29 +70,75 @@ const Vehicle = mongoose.model('Vehicle', VehicleSchema);
 // 1. Receive sensor data from ESP32 (POST /api/sensor)
 app.post('/api/sensor', async (req, res) => {
   try {
-    const { vehicleId, location, heading, speed, battery, irReading, rfidTaps } = req.body;
-    let vehicle = await Vehicle.findOne({ id: vehicleId });
-    if (!vehicle) {
-      vehicle = new Vehicle({ id: vehicleId });
+    console.log('Received sensor data:', JSON.stringify(req.body, null, 2));
+    
+    // Validate required fields
+    const { vehicleId, location, heading, speed, battery, irReading } = req.body;
+    
+    if (!vehicleId) {
+      console.error('Missing vehicleId in request');
+      return res.status(400).json({ error: 'vehicleId is required' });
     }
-    vehicle.location = location;
-    vehicle.heading = heading;
-    vehicle.speed = speed;
-    vehicle.battery = battery;
-    vehicle.irReading = irReading;
-    vehicle.lastUpdate = new Date();
-    await vehicle.save();
+    
+    console.log('MongoDB Connection Status:', mongoose.connection.readyState);
+    console.log('Looking for vehicle:', vehicleId);
+    
+    // Ensure database is connected
+    if (mongoose.connection.readyState !== 1) {
+      await connectToDatabase();
+    }
+    
+    let vehicle = await Vehicle.findOne({ id: vehicleId });
+    console.log('Existing vehicle found:', vehicle ? 'Yes' : 'No');
+    
+    if (!vehicle) {
+      console.log('Creating new vehicle:', vehicleId);
+      vehicle = new Vehicle({ 
+        id: vehicleId,
+        isAvailable: true,
+        capacity: 4  // default capacity
+      });
+    }
 
-    // Save RFID taps if present
+    // Update vehicle data
+    vehicle.location = location || vehicle.location;
+    vehicle.heading = heading || vehicle.heading;
+    vehicle.speed = speed !== undefined ? speed : vehicle.speed;
+    vehicle.battery = battery !== undefined ? battery : vehicle.battery;
+    vehicle.irReading = irReading !== undefined ? irReading : vehicle.irReading;
+    vehicle.lastUpdate = new Date();
+
+    console.log('Saving vehicle data:', JSON.stringify(vehicle.toJSON(), null, 2));
+    await vehicle.save();
+    console.log('Vehicle data saved successfully');
+
+    // Handle RFID taps if present
+    const { rfidTaps } = req.body;
     if (Array.isArray(rfidTaps)) {
+      console.log('Processing RFID taps:', rfidTaps.length);
       for (const tap of rfidTaps) {
         await RFID.create({ ...tap, timestamp: new Date() });
       }
+      console.log('RFID taps processed successfully');
     }
-    res.json({ success: true });
+
+    res.json({ 
+      success: true, 
+      vehicle: vehicle.toJSON(),
+      message: 'Sensor data processed successfully'
+    });
   } catch (error) {
-    console.error('Sensor data error:', error);
-    res.status(500).json({ error: 'Failed to process sensor data' });
+    console.error('Sensor data error:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    res.status(500).json({ 
+      error: 'Failed to process sensor data',
+      details: error.message,
+      code: error.code
+    });
   }
 });
 
@@ -238,21 +284,42 @@ const connectToDatabase = async () => {
   }
 
   try {
-    console.log('Creating new database connection');
-    await mongoose.connect(MONGO_URI);
+    console.log('Creating new database connection...');
+    console.log('MongoDB URI:', MONGO_URI.replace(/\/\/[^:]+:[^@]+@/, '//[hidden]@'));
+    
+    const connection = await mongoose.connect(MONGO_URI);
+    console.log('MongoDB connection successful');
+    console.log('Connected to database:', connection.connection.name);
+    
+    // Set up connection event listeners
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB connection error:', err);
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.log('MongoDB disconnected');
+      isConnected = false;
+    });
+    
     isConnected = true;
-    console.log('Database connection established');
+    return connection;
   } catch (error) {
-    console.error('Database connection error:', error);
+    console.error('Database connection error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code
+    });
     throw error;
   }
 }
 
 // Basic health check endpoint
 app.get('/', async (req, res) => {
+  console.log('Health check endpoint called');
   res.json({ 
     status: 'OK',
-    message: 'Robo Ride Backend is running'
+    message: 'Robo Ride Backend is running',
+    timestamp: new Date().toISOString()
   });
 });
 
