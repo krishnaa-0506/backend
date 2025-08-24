@@ -15,8 +15,18 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://harihk0506:anbu@cluster0.yzukbbs.mongodb.net/';
 
-app.use(cors());
+// Configure CORS for production
+app.use(cors({
+  origin: '*', // Be more restrictive in production
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
+
+// Add basic route for testing
+app.get('/', (req, res) => {
+  res.json({ status: 'Robo Ride Backend is running' });
+});
 
 // --- MongoDB Models ---
 const RideSchema = new mongoose.Schema({
@@ -89,6 +99,7 @@ app.post('/api/sensor', async (req, res) => {
 // 2. Book a ride (POST /api/rides)
 app.post('/api/rides', async (req, res) => {
   try {
+    console.log('Received ride booking request:', req.body);
     const { pickupLocation, destinationLocation, passengerCount, rfidVerified } = req.body;
     
     // Enforce max 10 passengers
@@ -106,7 +117,7 @@ app.post('/api/rides', async (req, res) => {
     }
 
     // Send command to ESP32-CAM
-    const response = await fetch(`http://${vehicle.id}.local/move`, {
+    const response = await fetch(`https://${vehicle.id}.local/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
