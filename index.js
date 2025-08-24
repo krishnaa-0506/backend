@@ -250,18 +250,26 @@ const connectToDatabase = async () => {
 
 // Basic health check endpoint
 app.get('/', async (req, res) => {
+  res.json({ 
+    status: 'OK',
+    message: 'Robo Ride Backend is running'
+  });
+});
+
+// Test MongoDB connection
+app.get('/api/status', async (req, res) => {
   try {
     await connectToDatabase();
     res.json({ 
       status: 'OK',
       message: 'Robo Ride Backend is running',
-      mongodb: isConnected ? 'Connected' : 'Not connected'
+      mongodb: 'Connected'
     });
   } catch (error) {
-    console.error('Health check error:', error);
+    console.error('Status check error:', error);
     res.status(500).json({ 
       status: 'Error',
-      message: 'Server error occurred',
+      message: 'Database connection failed',
       error: error.message
     });
   }
